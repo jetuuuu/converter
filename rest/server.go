@@ -4,6 +4,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -49,8 +52,8 @@ func (s Server) processing(w http.ResponseWriter, r *http.Request) {
 
 func (s Server) downloadAudio(j Job) {
 	resp, err := http.Get(j.Link)
-	if err != nil {
-		log.Printf("[%s] video download error %s", j.JobID, err.Error())
+	if err != nil || resp.StatusCode != http.StatusOK {
+		log.Printf("[%s] video download error", j.JobID)
 		return
 	}
 
@@ -61,10 +64,23 @@ func (s Server) downloadAudio(j Job) {
 		return
 	}
 
-	err = ioutil.WriteFile("./"+j.JobID+".avi", data, 0644)
+	src := "./" + j.JobID + ".avi"
+	defer func() {
+		err := os.Remove(src)
+		log.Printf("[%s] [INFO] remove tmp video file; Error %s", j.JobID, err.Error())
+	}()
+
+	err = ioutil.WriteFile(src, data, 0644)
 	if err != nil {
 		log.Printf("[%s] creation tmp file error %s", j.JobID, err.Error())
 		return
 	}
+
+	cmd := exec.Command("ffmpeg", []string{"-i", src, "-q:a", "0", "-map", "a", strings.Replace(src, ".avi", ".mp3", -1)}...)
+	if err := cmd.Run(); err != nil {
+		log.Printf("[%s] extract audio error %s ", j.JobID, err.Error())
+		return
+	}
+
 	log.Printf("[%s] completed successfully", j.JobID)
 }
