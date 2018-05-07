@@ -7,10 +7,24 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/render"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+var (
+	timings = prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Name: "converter_method_timing",
+			Help: "per method time",
+		},
+		[]string{"method"},
+	)
 )
 
 type Server struct{}
@@ -20,17 +34,20 @@ func New() Server {
 }
 
 func (s Server) Run() {
+	prometheus.MustRegister(timings)
 	router := chi.NewRouter()
-
-	router.Use(middleware.RequestID)
-	router.Use(middleware.RealIP)
-	router.Use(middleware.Logger)
 
 	router.Use(middleware.Recoverer)
 
 	router.Route("/api/v1", func(r chi.Router) {
+		router.Use(middleware.RequestID)
+		router.Use(middleware.RealIP)
+		router.Use(middleware.Logger)
+
 		r.Post("/processing", s.processing)
 	})
+
+	router.Handle("/metrics", promhttp.Handler())
 
 	log.Fatal(http.ListenAndServe(":9090", router))
 }
@@ -83,4 +100,15 @@ func (s Server) downloadAudio(j Job) {
 	}
 
 	log.Printf("[%s] completed successfully", j.JobID)
+}
+
+func timeTrackMiddleware(next http.Handler) http.Handler {
+	fn := func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		next.ServeHTTP(w, r)
+
+		timings.WithLabelValues(r.URL.Path).Observe(float64(time.Since(start).Seconds()))
+	}
+	return http.HandlerFunc(fn)
 }
