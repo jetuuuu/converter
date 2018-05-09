@@ -1,6 +1,9 @@
 package rest
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -12,6 +15,7 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/render"
+	"github.com/jetuuuu/converter/config"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -27,19 +31,28 @@ var (
 	)
 )
 
-type Server struct{}
-
-func New() Server {
-	return Server{}
+type Server struct {
+	cfg      config.ConfigReader
+	nodeAddr string
+	token    string
 }
 
-func (s Server) Run() {
-	prometheus.MustRegister(timings)
+func New(cfgReader config.ConfigReader) Server {
+	return Server{
+		cfg: cfgReader,
+	}
+}
+
+func (s Server) Run() error {
+	if err := s.register(); err != nil {
+		return err
+	}
 	router := chi.NewRouter()
 
 	router.Use(middleware.Recoverer)
 
 	router.Route("/api/v1", func(r chi.Router) {
+		router.Use(middleware.Recoverer)
 		router.Use(middleware.RequestID)
 		router.Use(middleware.RealIP)
 		router.Use(middleware.Logger)
@@ -49,7 +62,36 @@ func (s Server) Run() {
 
 	router.Handle("/metrics", promhttp.Handler())
 
-	log.Fatal(http.ListenAndServe(":9090", router))
+	err := http.ListenAndServe(":9090", router)
+	log.Fatal(err)
+	return err
+}
+
+func (s *Server) register() error {
+	prometheus.MustRegister(timings)
+	cfg := s.cfg.Read()
+	var nodes []string
+	for {
+		n := cfg.Apis.Next()
+		resp, err := http.Get("http://" + n.Adress + "/api/v1/register")
+		if err != nil {
+			log.Printf("[WARN] got error while register in node %s", n.Adress)
+			for _, a := range nodes {
+				if a == n.Adress {
+					return fmt.Errorf("all nodes down")
+				}
+			}
+			continue
+		}
+
+		request := make(map[string]string)
+		render.DecodeJSON(resp.Body, &request)
+		resp.Body.Close()
+
+		s.token = request["token"]
+		s.nodeAddr = "http://" + n.Adress + "/api/v1"
+		return nil
+	}
 }
 
 func (s Server) processing(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +110,28 @@ func (s Server) processing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s Server) downloadAudio(j Job) {
+	var (
+		err       error
+		audioPath string
+	)
+	defer func() {
+		status := "done"
+		if err != nil {
+			status = "fail"
+		}
+		data, _ := json.Marshal(map[string]string{
+			"job_id":     j.JobID,
+			"status":     status,
+			"audio_link": "",
+		})
+
+		resp, err := http.Post(s.nodeAddr+"/job", "application/json", bytes.NewReader(data))
+		if err != nil || resp.StatusCode != http.StatusOK {
+			log.Printf("[WARN] api node does not response; remove file %s", audioPath)
+			os.Remove(audioPath)
+		}
+	}()
+
 	resp, err := http.Get(j.Link)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		log.Printf("[%s] video download error", j.JobID)
@@ -93,8 +157,10 @@ func (s Server) downloadAudio(j Job) {
 		return
 	}
 
-	cmd := exec.Command("ffmpeg", []string{"-i", src, "-q:a", "0", "-map", "a", strings.Replace(src, ".avi", ".mp3", -1)}...)
-	if err := cmd.Run(); err != nil {
+	audioPath = strings.Replace(src, ".avi", ".mp3", -1)
+	cmd := exec.Command("ffmpeg", []string{"-i", src, "-q:a", "0", "-map", "a", audioPath}...)
+	err = cmd.Run()
+	if err != nil {
 		log.Printf("[%s] extract audio error %s ", j.JobID, err.Error())
 		return
 	}
