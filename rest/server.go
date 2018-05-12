@@ -62,7 +62,7 @@ func (s Server) Run() error {
 
 	router.Handle("/metrics", promhttp.Handler())
 
-	err := http.ListenAndServe(":9090", router)
+	err := http.ListenAndServe(":8080", router)
 	log.Fatal(err)
 	return err
 }
@@ -145,7 +145,7 @@ func (s Server) downloadAudio(j Job) {
 		return
 	}
 
-	src := "./" + j.JobID + ".avi"
+	src := "/audio/" + j.JobID + ".avi"
 	defer func() {
 		err := os.Remove(src)
 		log.Printf("[%s] [INFO] remove tmp video file; Error %s", j.JobID, err.Error())
