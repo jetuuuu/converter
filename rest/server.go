@@ -73,7 +73,7 @@ func (s *Server) register() error {
 	var nodes []string
 	for {
 		n := cfg.Apis.Next()
-		resp, err := http.Get("http://" + n.Adress + "/api/v1/register")
+		resp, err := http.Get("http://" + n.Adress + "/api/v1/converter/register")
 		if err != nil {
 			log.Printf("[WARN] got error while register in node %s", n.Adress)
 			for _, a := range nodes {
