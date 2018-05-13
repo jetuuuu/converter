@@ -13,7 +13,7 @@ RUN curl -s https://storage.googleapis.com/golang/go1.10.linux-amd64.tar.gz | ta
 
 ENV GOPATH /go
 ENV GOROOT /usr/local/go
-ENV PATH /usr/local/go/bin:/go/bin:/usr/local/bin:$PAT
+ENV PATH /usr/local/go/bin:/go/bin:/usr/local/bin:$PATH
 
 RUN mkdir /audio
 RUN mkdir -p /go/src/github.com/jetuuuu/converter

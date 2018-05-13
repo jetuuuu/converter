@@ -89,7 +89,7 @@ func (s *Server) register() error {
 		resp.Body.Close()
 
 		s.token = request["token"]
-		s.nodeAddr = "http://" + n.Adress + "/api/v1"
+		s.nodeAddr = "http://" + n.Adress + "/api/v1/converter"
 		return nil
 	}
 }
