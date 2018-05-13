@@ -120,12 +120,17 @@ func (s Server) downloadAudio(j Job) {
 			status = "fail"
 		}
 		data, _ := json.Marshal(map[string]string{
-			"job_id":     j.JobID,
-			"status":     status,
-			"audio_link": "",
+			"job_id": j.JobID,
+			"status": status,
 		})
 
-		resp, err := http.Post(s.nodeAddr+"/job", "application/json", bytes.NewReader(data))
+		req, _ := http.NewRequest(http.MethodPost, s.nodeAddr+"/job", bytes.NewReader(data))
+		req.Header.Set("Authorization", "BEARER "+s.token)
+		client := http.Client{
+			Timeout: 5 * time.Second,
+		}
+
+		resp, err := client.Do(req)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			log.Printf("[WARN] api node does not response; remove file %s", audioPath)
 			os.Remove(audioPath)
@@ -148,7 +153,9 @@ func (s Server) downloadAudio(j Job) {
 	src := "/audio/" + j.JobID + ".avi"
 	defer func() {
 		err := os.Remove(src)
-		log.Printf("[%s] [INFO] remove tmp video file; Error %s", j.JobID, err.Error())
+		if err != nil {
+			log.Printf("[%s] [INFO] remove tmp video file; Error %s", j.JobID, err.Error())
+		}
 	}()
 
 	err = ioutil.WriteFile(src, data, 0644)
