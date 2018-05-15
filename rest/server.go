@@ -58,6 +58,7 @@ func (s Server) Run() error {
 		router.Use(middleware.Logger)
 
 		r.Post("/processing", s.processing)
+		r.Delete("/delete/{id}", s.delete)
 	})
 
 	router.Handle("/metrics", promhttp.Handler())
@@ -91,6 +92,16 @@ func (s *Server) register() error {
 		s.token = request["token"]
 		s.nodeAddr = "http://" + n.Adress + "/api/v1/converter"
 		return nil
+	}
+}
+
+func (s Server) delete(w http.ResponseWriter, r *http.Request) {
+	fileID := chi.URLParam(r, "id")
+	err := os.Remove("/audio/" + fileID + ".mp3")
+	if err == nil {
+		render.Status(r, http.StatusOK)
+	} else {
+		render.Status(r, http.StatusInternalServerError)
 	}
 }
 
