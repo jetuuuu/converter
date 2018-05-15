@@ -121,6 +121,7 @@ func (s Server) processing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s Server) downloadAudio(j Job) {
+	log.Printf("[%s] [INFO] start video downloader", j.JobID)
 	var (
 		err       error
 		audioPath string
@@ -150,14 +151,16 @@ func (s Server) downloadAudio(j Job) {
 
 	resp, err := http.Get(j.Link)
 	if err != nil || resp.StatusCode != http.StatusOK {
-		log.Printf("[%s] video download error", j.JobID)
+		log.Printf("[%s] [WARN] video download error", j.JobID)
 		return
 	}
+
+	log.Printf("[%s] [INFO] video downloaded", j.JobID)
 
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("[%s] video read error %s", j.JobID, err.Error())
+		log.Printf("[%s] [WARN] video read error %s", j.JobID, err.Error())
 		return
 	}
 
@@ -171,10 +174,11 @@ func (s Server) downloadAudio(j Job) {
 
 	err = ioutil.WriteFile(src, data, 0644)
 	if err != nil {
-		log.Printf("[%s] creation tmp file error %s", j.JobID, err.Error())
+		log.Printf("[%s] [WARN] creation tmp file error %s", j.JobID, err.Error())
 		return
 	}
 
+	log.Printf("[%s] [INFO] start ffmpeg", j.JobID)
 	audioPath = strings.Replace(src, ".avi", ".mp3", -1)
 	cmd := exec.Command("ffmpeg", []string{"-i", src, "-q:a", "0", "-map", "a", audioPath}...)
 	err = cmd.Run()
@@ -183,7 +187,7 @@ func (s Server) downloadAudio(j Job) {
 		return
 	}
 
-	log.Printf("[%s] completed successfully", j.JobID)
+	log.Printf("[%s] [INFO] completed successfully", j.JobID)
 }
 
 func timeTrackMiddleware(next http.Handler) http.Handler {
